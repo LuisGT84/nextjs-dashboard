@@ -1,12 +1,14 @@
+// app/lib/actions.ts
 'use server';
 
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import postgres from 'postgres';
- 
+
 const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
+// ------ Esquema de validación ------
 const FormSchema = z.object({
   id: z.string(),
   customerId: z.string(),
@@ -15,8 +17,13 @@ const FormSchema = z.object({
   date: z.string(),
 });
 
+// Para crear y para actualizar usamos el mismo shape
 const CreateInvoice = FormSchema.omit({ id: true, date: true });
+const UpdateInvoice = FormSchema.omit({ id: true, date: true });
 
+// ======================================================
+//  CREATE
+// ======================================================
 export async function createInvoice(formData: FormData) {
   const { customerId, amount, status } = CreateInvoice.parse({
     customerId: formData.get('customerId'),
@@ -27,43 +34,53 @@ export async function createInvoice(formData: FormData) {
   const amountInCents = amount * 100;
   const date = new Date().toISOString().split('T')[0];
 
-  // Consulta para insertar la nueva factura en la base de datos
-  await sql`
-    INSERT INTO invoices (customer_id, amount, status, date)
-    VALUES (${customerId}, ${amountInCents}, ${status}, ${date})
-  `;
+  try {
+    await sql`
+      INSERT INTO invoices (customer_id, amount, status, date)
+      VALUES (${customerId}, ${amountInCents}, ${status}, ${date})
+    `;
+  } catch (error) {
+    // Esto es exactamente lo que muestra la guía
+    console.error(error);
+    return { message: 'Database Error: Failed to Create Invoice.' };
+  }
 
   revalidatePath('/dashboard/invoices');
   redirect('/dashboard/invoices');
-  // Test it out:
-  //console.log(rawFormData);
 }
 
-// Use Zod to update the expected types
-const UpdateInvoice = FormSchema.omit({ id: true, date: true });
- 
-// ...
- 
+// ======================================================
+//  UPDATE
+// ======================================================
 export async function updateInvoice(id: string, formData: FormData) {
   const { customerId, amount, status } = UpdateInvoice.parse({
     customerId: formData.get('customerId'),
     amount: formData.get('amount'),
     status: formData.get('status'),
   });
- 
+
   const amountInCents = amount * 100;
- 
-  await sql`
-    UPDATE invoices
-    SET customer_id = ${customerId}, amount = ${amountInCents}, status = ${status}
-    WHERE id = ${id}
-  `;
- 
+
+  try {
+    await sql`
+      UPDATE invoices
+      SET customer_id = ${customerId},
+          amount      = ${amountInCents},
+          status      = ${status}
+      WHERE id = ${id}
+    `;
+  } catch (error) {
+    console.error(error);
+    return { message: 'Database Error: Failed to Update Invoice.' };
+  }
+
   revalidatePath('/dashboard/invoices');
   redirect('/dashboard/invoices');
 }
 
+// Deltete
 export async function deleteInvoice(id: string) {
+  throw new Error('Failed to Delete Invoice'); 
   await sql`DELETE FROM invoices WHERE id = ${id}`;
   revalidatePath('/dashboard/invoices');
 }
